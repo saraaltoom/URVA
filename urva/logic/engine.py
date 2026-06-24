@@ -24,55 +24,51 @@ class LogicEngine:
     def check_statement(self, text: str) -> List[Dict[str, Any]]:
         return self.apply_rules(text)
 
-    doc = _nlp(text) if _SPACY_AVAILABLE and _nlp else None
-
-    
-
     def apply_rules(self, text: str) -> List[Dict[str, Any]]:
-    violations = []
-    text_lower = text.lower()
-    doc = _nlp(text) if _SPACY_AVAILABLE and _nlp else None
+        violations = []
+        text_lower = text.lower()
+        doc = _nlp(text) if _SPACY_AVAILABLE and _nlp else None
 
-    # Rule 1: Negation Conflict (SpaCy-based)
-    if doc:
-        has_neg = any(tok.dep_ == "neg" for tok in doc)
-        has_aff = any(tok.pos_ == "VERB" and tok.dep_ != "neg" for tok in doc)
-        if has_neg and has_aff:
-            violations.append({
-                "rule": "NegationConflict",
-                "category": "LOGICAL",
-                "detail": "Negation detected via dependency parse"
-            })
-    else:
-        neg_patterns = [
-            (r"\bis\b", r"\bis not\b"),
-            (r"\bwas\b", r"\bwas not\b"),
-            (r"\bcan\b", r"\bcannot\b"),
-        ]
-        for pos, neg in neg_patterns:
-            if re.search(pos, text_lower) and re.search(neg, text_lower):
+        # Rule 1: Negation Conflict (SpaCy-based)
+        if doc:
+            has_neg = any(tok.dep_ == "neg" for tok in doc)
+            has_aff = any(tok.pos_ == "VERB" and tok.dep_ != "neg" for tok in doc)
+            if has_neg and has_aff:
                 violations.append({
                     "rule": "NegationConflict",
                     "category": "LOGICAL",
-                    "detail": "Affirmative and negated claims coexist"
+                    "detail": "Negation detected via dependency parse"
                 })
-                break
+        else:
+            neg_patterns = [
+                (r"\bis\b", r"\bis not\b"),
+                (r"\bwas\b", r"\bwas not\b"),
+                (r"\bcan\b", r"\bcannot\b"),
+            ]
+            for pos, neg in neg_patterns:
+                if re.search(pos, text_lower) and re.search(neg, text_lower):
+                    violations.append({
+                        "rule": "NegationConflict",
+                        "category": "LOGICAL",
+                        "detail": "Affirmative and negated claims coexist"
+                    })
+                    break
 
-    # Rule 2: Entity Mismatch (SpaCy NER)
-    if doc:
-        entities = [ent.text for ent in doc.ents]
-    else:
-        entities = re.findall(r'\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b', text)
-    if len(entities) != len(set(entities)):
-        seen = {}
-        for e in entities:
-            seen[e] = seen.get(e, 0) + 1
-        if any(v > 2 for v in seen.values()):
-            violations.append({
-                "rule": "EntityMismatch",
-                "category": "FACTUAL",
-                "detail": "Repeated conflicting entity references"
-            })
+        # Rule 2: Entity Mismatch (SpaCy NER)
+        if doc:
+            entities = [ent.text for ent in doc.ents]
+        else:
+            entities = re.findall(r'\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b', text)
+        if len(entities) != len(set(entities)):
+            seen = {}
+            for e in entities:
+                seen[e] = seen.get(e, 0) + 1
+            if any(v > 2 for v in seen.values()):
+                violations.append({
+                    "rule": "EntityMismatch",
+                    "category": "FACTUAL",
+                    "detail": "Repeated conflicting entity references"
+                })
 
         # Rule 3: Numeric Inconsistency
         numbers = re.findall(r'\b\d+(?:\.\d+)?\b', text)
