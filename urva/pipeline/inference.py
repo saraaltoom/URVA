@@ -13,8 +13,8 @@ class InferencePipeline:
         self.logic = logic
         self.speed_profiles = {
             "aggressive": {"refine": 0, "conflict_threshold": 0.35},
-            "balanced": {"refine": 1, "conflict_threshold": 0.25},
-            "deep": {"refine": 3, "conflict_threshold": 0.2},
+"balanced":   {"refine": 0, "conflict_threshold": 0.25},
+"deep":       {"refine": 0, "conflict_threshold": 0.2},
         }
 
     def run(self, item: Dict[str, Any], speed: str = "balanced", debug: bool = False, ablation: str | None = None):
