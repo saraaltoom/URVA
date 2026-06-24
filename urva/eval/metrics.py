@@ -1,10 +1,12 @@
-"""
-Advanced metrics: accuracy, consistency, spectral conflict, hallucination taxonomy,
-calibration error, self-consistency variance, robustness proxy.
-"""
 import json
 from typing import List, Dict, Any
 import numpy as np
+
+
+def _compute_certainty(logic_penalty: float, faithfulness: float,
+                       grounding: float, alpha: float = 0.5, beta: float = 0.5) -> float:
+    """Certainty = (1-L)(αF + βG) — Equation 1 & 3 from paper"""
+    return max(0.0, (1.0 - logic_penalty) * (alpha * faithfulness + beta * grounding))
 
 
 def compute_metrics(outputs: List[Dict[str, Any]]) -> Dict[str, float]:
@@ -16,24 +18,20 @@ def compute_metrics(outputs: List[Dict[str, Any]]) -> Dict[str, float]:
     spectral_sum = 0.0
     certainties = []
     cons_scores = []
+
     for out in outputs:
         hall = out.get("hallucination", {})
         has_hall = hall.get("has_hallucination", False)
         conflict = out.get("fusion", {}).get("conflict_score", 0.0)
         spectral = out.get("conflict_graph", {}).get("spectral", 0.0)
         viol = hall.get("violations", [])
- def compute_certainty(
-          logic_penalty: float,
-        faithfulness: float,
-            grounding: float,
-            alpha: float = 0.5,
-            beta: float = 0.5,
-):
-    return max(
-        0.0,
-        (1.0 - logic_penalty)
-        * (alpha * faithfulness + beta * grounding)
-    )
+
+        # Compute certainty per example using paper formula
+        _F = out.get("grounding", {}).get("avg_score", 0.0)
+        _G = max(0.0, 1.0 - conflict)
+        _L = min(len(viol) / 5, 1.0)
+        certainty = _compute_certainty(_L, _F, _G)
+
         if not has_hall and conflict < 0.25:
             accurate += 1
         if has_hall:
@@ -46,9 +44,9 @@ def compute_metrics(outputs: List[Dict[str, Any]]) -> Dict[str, float]:
 
     consistency_var = float(np.var(cons_scores)) if cons_scores else 0.0
     calibration_error = (
-        float(np.abs(np.array(certainties) - np.array([1 - conflict_sum / total] * len(certainties))).mean())
-        if certainties
-        else 0.0
+        float(np.abs(np.array(certainties) -
+                     np.array([1 - conflict_sum / total] * len(certainties))).mean())
+        if certainties else 0.0
     )
 
     return {
@@ -69,11 +67,11 @@ def export_json(metrics: Dict[str, float], path: str) -> None:
 
 def summarize(metrics: Dict[str, float]) -> str:
     return (
-        f"Acc: {metrics.get('accuracy',0):.3f} | "
-        f"Halluc: {metrics.get('hallucination_rate',0):.3f} | "
-        f"Conflict: {metrics.get('conflict_rate',0):.3f} | "
-        f"Spectral: {metrics.get('spectral_conflict',0):.3f} | "
-        f"Logic Viol: {metrics.get('logic_violation_rate',0):.3f} | "
-        f"Cons Var: {metrics.get('self_consistency_variance',0):.3f} | "
-        f"Calib Err: {metrics.get('calibration_error',0):.3f}"
+        f"Acc: {metrics.get('accuracy', 0):.3f} | "
+        f"Halluc: {metrics.get('hallucination_rate', 0):.3f} | "
+        f"Conflict: {metrics.get('conflict_rate', 0):.3f} | "
+        f"Spectral: {metrics.get('spectral_conflict', 0):.3f} | "
+        f"Logic Viol: {metrics.get('logic_violation_rate', 0):.3f} | "
+        f"Cons Var: {metrics.get('self_consistency_variance', 0):.3f} | "
+        f"Calib Err: {metrics.get('calibration_error', 0):.3f}"
     )
