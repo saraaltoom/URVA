@@ -1,12 +1,9 @@
+# urva/checks/hallucination.py 
 from typing import Dict, Any, List
 from urva.logic.engine import LogicEngine
 
 
 class HallucinationChecker:
-    """
-    Aggregates logic violations and conflict signals into a taxonomy of hallucinations.
-    """
-
     def __init__(self, engine: LogicEngine, conflict_threshold: float = 0.25):
         self.engine = engine
         self.conflict_threshold = conflict_threshold
@@ -29,24 +26,26 @@ class HallucinationChecker:
             violations.extend(v)
 
         has_conflict = conflict_score > self.conflict_threshold
+
+        # ✅ Categories now match Table V in the paper
+        category_priority = [
+            "FACTUAL",    # covers Entity Mismatch + Unsupported Assertion
+            "NUMERIC",    # covers Numeric Inconsistency
+            "LOGICAL",    # covers Negation Conflict + Label Violation
+        ]
+
         hallucination_type = None
         explanation = None
 
         if violations:
             cats = {v["category"] for v in violations}
-            if "FACTUAL" in cats:
-                hallucination_type = "FACTUAL"
-            elif "NUMERIC" in cats:
-                hallucination_type = "NUMERIC"
-            elif "TEMPORAL" in cats:
-                hallucination_type = "TEMPORAL"
-            elif "CAUSAL" in cats:
-                hallucination_type = "CAUSAL"
-            elif "IMPOSSIBLE_PREMISE" in cats:
-                hallucination_type = "IMPOSSIBLE PREMISE"
-            else:
-                hallucination_type = "LOGICAL"
-            explanation = "Logic rules triggered: " + ", ".join({v["rule"] for v in violations})
+            for priority_cat in category_priority:
+                if priority_cat in cats:
+                    hallucination_type = priority_cat
+                    break
+            explanation = "Logic rules triggered: " + ", ".join(
+                {v["rule"] for v in violations}
+            )
         elif has_conflict:
             hallucination_type = "LOGICAL"
             explanation = "Contradictions detected between generated states."
