@@ -196,13 +196,11 @@ class InferencePipeline:
 
     # ----------------- Certainty -----------------
     def _certainty(self, faithfulness: float, grounding: float, logic_penalty: float,
-               alpha: float = 0.5, beta: float = 0.5) -> float:
+                   alpha: float = 0.5, beta: float = 0.5) -> float:
+        evidence = alpha * faithfulness + beta * grounding
+        certainty = (1 - logic_penalty) * evidence
+        return float(max(0.0, min(1.0, certainty)))
    
-    evidence = alpha * faithfulness + beta * grounding
-    certainty = (1 - logic_penalty) * evidence
-    return float(max(0.0, min(1.0, certainty)))
-
-    # ----------------- Natural language output -----------------
     def _clean(self, txt: str) -> str:
         return (
             txt.replace("Answer:", "")
