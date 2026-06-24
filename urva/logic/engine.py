@@ -57,6 +57,13 @@ class LogicEngine:
             add("IMPOSSIBLE_PREMISE", "Physical impossibility", "critical", "Impossible premise detected.")
 
         return results
+        
+        def compute_logic_penalty(self, text: str) -> float:
+   
+            N = 5  
+            violations = self.apply_rules(text)
+            triggered_rules = len({v["rule"] for v in violations})
+            return min(1.0, triggered_rules / N)
 
     def check_statement(self, statement: str) -> List[Dict[str, Any]]:
         return self.apply_rules(statement)
