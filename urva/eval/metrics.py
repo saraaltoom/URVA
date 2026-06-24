@@ -27,8 +27,12 @@ def compute_metrics(outputs: List[Dict[str, Any]]) -> Dict[str, float]:
         viol = hall.get("violations", [])
 
         # Compute certainty per example using paper formula
-        _F = out.get("grounding", {}).get("avg_score", 0.0)
-        _G = max(0.0, 1.0 - conflict)
+        pred = out.get("final_answer", "")
+        ctx  = out.get("fusion", {}).get("context_match", "")
+        pred_tok = set(pred.lower().split())
+        ctx_tok  = set(ctx.lower().split())
+        _F = len(pred_tok & ctx_tok) / max(len(ctx_tok), 1)
+        _G = out.get("grounding", {}).get("avg_score", 0.0)
         _L = min(len(viol) / 5, 1.0)
         certainty = _compute_certainty(_L, _F, _G)
 
