@@ -1,57 +1,86 @@
+# urva/logic/engine.py
+import re
 import json
-from typing import Dict, List, Any
-from .rules import LogicRules
+from typing import List, Dict, Any
 
 
 class LogicEngine:
-    """
-    Expanded logic engine that checks multiple rule families and returns structured violations.
-    """
-
-    def __init__(self, rules: LogicRules):
+    def __init__(self, rules: List[Dict[str, Any]]):
         self.rules = rules
 
     @classmethod
     def from_file(cls, path: str) -> "LogicEngine":
         with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        rules = LogicRules(**data)
+            rules = json.load(f)
         return cls(rules)
 
-    def apply_rules(self, text: str, context: str = "", valid_labels: set = None) -> List[Dict]:
-    results = []
-    
-    # Rule 1: Negation Conflict
-    if self._has_negation_conflict(text):
-        results.append({"rule": "Negation Conflict", "category": "LOGICAL", "r": 1})
-    
-    # Rule 2: Entity Mismatch
-    if context and self._has_entity_mismatch(text, context):
-        results.append({"rule": "Entity Mismatch", "category": "FACTUAL", "r": 1})
-    
-    # Rule 3: Numeric Inconsistency
-    if self._has_numeric_inconsistency(text):
-        results.append({"rule": "Numeric Inconsistency", "category": "NUMERIC", "r": 1})
-    
-    # Rule 4: Label Violation
-    if valid_labels and self._has_label_violation(text, valid_labels):
-        results.append({"rule": "Label Violation", "category": "LABEL", "r": 1})
-    
-    # Rule 5: Unsupported Assertion
-    if context and self._has_unsupported_assertion(text, context):
-        results.append({"rule": "Unsupported Assertion", "category": "GROUNDING", "r": 1})
-    
-    return results
-        
-        def compute_logic_penalty(self, text: str) -> float:
-   
-            N = 5  
-            violations = self.apply_rules(text)
-            triggered_rules = len({v["rule"] for v in violations})
-            return min(1.0, triggered_rules / N)
+    def check_statement(self, text: str) -> List[Dict[str, Any]]:
+        return self.apply_rules(text)
 
-    def check_statement(self, statement: str) -> List[Dict[str, Any]]:
-        return self.apply_rules(statement)
+    def apply_rules(self, text: str) -> List[Dict[str, Any]]:
+        violations = []
+        text_lower = text.lower()
 
-    def summarize(self) -> str:
-        return json.dumps(self.rules.__dict__, indent=2)
+        # Rule 1: Negation Conflict
+        neg_patterns = [
+            (r"\bis\b", r"\bis not\b"),
+            (r"\bwas\b", r"\bwas not\b"),
+            (r"\bcan\b", r"\bcannot\b"),
+        ]
+        for pos, neg in neg_patterns:
+            if re.search(pos, text_lower) and re.search(neg, text_lower):
+                violations.append({
+                    "rule": "NegationConflict",
+                    "category": "LOGICAL",
+                    "detail": "Affirmative and negated claims coexist"
+                })
+                break
+
+        # Rule 2: Entity Mismatch (repeated conflicting proper nouns)
+        entities = re.findall(r'\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b', text)
+        if len(entities) != len(set(entities)):
+            seen = {}
+            for e in entities:
+                seen[e] = seen.get(e, 0) + 1
+            if any(v > 2 for v in seen.values()):
+                violations.append({
+                    "rule": "EntityMismatch",
+                    "category": "FACTUAL",
+                    "detail": "Repeated conflicting entity references"
+                })
+
+        # Rule 3: Numeric Inconsistency
+        numbers = re.findall(r'\b\d+(?:\.\d+)?\b', text)
+        if len(numbers) >= 2:
+            nums = [float(n) for n in numbers]
+            if max(nums) > 10 * min(nums) and min(nums) > 0:
+                violations.append({
+                    "rule": "NumericInconsistency",
+                    "category": "NUMERIC",
+                    "detail": f"Suspicious numeric range: {min(nums)} vs {max(nums)}"
+                })
+
+        # Rule 4: Label Violation
+        valid_labels = {"supports", "refutes", "not enough info",
+                        "hallucinated", "supported", "yes", "no"}
+        tokens = set(text_lower.split())
+        label_tokens = tokens & valid_labels
+        if len(label_tokens) > 1:
+            violations.append({
+                "rule": "LabelViolation",
+                "category": "LOGICAL",
+                "detail": f"Multiple conflicting labels: {label_tokens}"
+            })
+
+        # Rule 5: Unsupported Assertion
+        assertion_markers = ["definitely", "certainly", "always", "never",
+                             "impossible", "guaranteed", "proven"]
+        found = [m for m in assertion_markers if m in text_lower]
+        if found:
+            violations.append({
+                "rule": "UnsupportedAssertion",
+                "category": "FACTUAL",
+                "detail": f"Strong unsupported assertion markers: {found}"
+            })
+
+        return violations
