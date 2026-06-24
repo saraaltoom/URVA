@@ -3,11 +3,27 @@ import torch
 from torch import nn
 
 
-class FactGrounder(nn.Module):
-    """
-    Simple grounding model: embeds characters and scores token positions as 'grounded'
-    using a GRU encoder. Also provides a callable interface for text batches.
-    """
+from sentence_transformers import SentenceTransformer
+import numpy as np
+
+class FactGrounder:
+    def __init__(self, cfg):
+        self.sbert = SentenceTransformer('all-MiniLM-L6-v2')
+        self.threshold = cfg.get("grounder", {}).get("threshold", 0.45)
+
+    def compute_grounding(self, prediction: str, context: str) -> float:
+        """G = α_lex * lexical_overlap + α_sem * semantic_sim"""
+        # Lexical
+        pred_tok = set(prediction.lower().split())
+        ctx_tok = set(context.lower().split())
+        lexical = len(pred_tok & ctx_tok) / max(len(ctx_tok), 1)
+        # Semantic (SBERT)
+        embs = self.sbert.encode([prediction, context])
+        sem = float(np.dot(embs[0], embs[1]) / 
+                    (np.linalg.norm(embs[0]) * np.linalg.norm(embs[1]) + 1e-8))
+        sem = max(0.0, sem)  # clip negative
+        
+        return 0.5 * lexical + 0.5 * sem
 
     def __init__(self, cfg: Dict[str, Any]):
         super().__init__()
