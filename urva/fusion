@@ -1,0 +1,80 @@
+# urva/eval/fusion.py
+import re
+from typing import List
+
+
+def compute_token_overlap(prediction: str, context: str) -> float:
+    """Faithfulness F: lexical token coverage"""
+    if not context:
+        return 0.0
+    pred_tokens = set(prediction.lower().split())
+    ctx_tokens = set(context.lower().split())
+    if not ctx_tokens:
+        return 0.0
+    return len(pred_tokens & ctx_tokens) / len(ctx_tokens)
+
+
+def compute_semantic_similarity(prediction: str, context: str) -> float:
+    """
+    Grounding G: lightweight semantic proxy using bigram overlap.
+    In production replace with SBERT as described in the paper.
+    """
+    if not context or not prediction:
+        return 0.0
+
+    def bigrams(text):
+        tokens = text.lower().split()
+        return set(zip(tokens, tokens[1:]))
+
+    pred_bg = bigrams(prediction)
+    ctx_bg = bigrams(context)
+    if not ctx_bg:
+        return 0.0
+    return len(pred_bg & ctx_bg) / len(ctx_bg)
+
+
+def compute_logic_penalty(violations: List[dict]) -> float:
+    """
+    Logic Penalty L: normalized average of binary rule violations.
+    Formula from paper: L = (1/N) * sum(r_i)
+    N is fixed at 5 matching the 5 rules in Table V.
+    """
+    N = 5  # Total rules defined in LogicEngine (Table V in paper)
+    triggered = min(len(violations), N)
+    return triggered / N
+
+
+def compute_certainty(
+    logic_penalty: float,
+    faithfulness: float,
+    grounding: float,
+    alpha: float = 0.5,
+    beta: float = 0.5,
+) -> float:
+    """
+    Core URVA certainty formula (Equation 1 & 3 in paper):
+    Certainty = (1 - L)(αF + βG),  α + β = 1
+    """
+    assert abs(alpha + beta - 1.0) < 1e-6, "alpha + beta must equal 1"
+    evidence = alpha * faithfulness + beta * grounding
+    return (1.0 - logic_penalty) * evidence
+
+
+def fuse(
+    prediction: str,
+    context: str,
+    violations: list,
+    alpha: float = 0.5,
+    beta: float = 0.5,
+) -> dict:
+    """Single entry point used by InferencePipeline."""
+    F = compute_token_overlap(prediction, context)
+    G = compute_semantic_similarity(prediction, context)
+    L = compute_logic_penalty(violations)
+    certainty = compute_certainty(L, F, G, alpha, beta)
+    return {
+        "faithfulness": round(F, 4),
+        "grounding": round(G, 4),
+        "logic_penalty": round(L, 4),
+        "certainty": round(certainty, 4),
+    }
