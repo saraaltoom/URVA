@@ -18,45 +18,30 @@ class LogicEngine:
         rules = LogicRules(**data)
         return cls(rules)
 
-    def apply_rules(self, text: str) -> List[Dict[str, Any]]:
-        results: List[Dict[str, Any]] = []
-        low = text.lower()
-
-        def add(cat: str, rule: str, severity: str, message: str):
-            results.append(
-                {"category": cat, "rule": rule, "severity": severity, "message": message}
-            )
-
-        # Factual consistency: detect double negations or self-contradiction heuristics
-        if "not" in low and "never" in low:
-            for r in self.rules.consistency_rules:
-                add("FACTUAL", r, "medium", "Conflicting negations detected.")
-
-        # Numeric bounds
-        if any(tok in low for tok in ["-km", " impossible distance", "lightyears in an atom"]):
-            for r in self.rules.numeric_bounds:
-                add("NUMERIC", r, "high", "Numeric bounds exceeded or invalid.")
-
-        # Temporal rules
-        if any(tok in low for tok in ["in the future", "2100", "next century", "before birth"]):
-            for r in self.rules.temporal_rules:
-                add("TEMPORAL", r, "medium", "Temporal feasibility violated.")
-
-        # Entity existence
-        if any(tok in low for tok in ["unicorn", "hogwarts", "atlantis", "mythical"]):
-            for r in self.rules.existence_rules:
-                add("EXISTENCE", r, "medium", "Nonexistent or fictional entity detected.")
-
-        # Causal feasibility
-        if "without cause" in low or "effect before cause" in low:
-            for r in self.rules.causal_rules:
-                add("CAUSAL", r, "high", "Cause/effect ordering violated.")
-
-        # Impossible premise
-        if any(tok in low for tok in ["perpetual motion", "faster than light", "square circle"]):
-            add("IMPOSSIBLE_PREMISE", "Physical impossibility", "critical", "Impossible premise detected.")
-
-        return results
+    def apply_rules(self, text: str, context: str = "", valid_labels: set = None) -> List[Dict]:
+    results = []
+    
+    # Rule 1: Negation Conflict
+    if self._has_negation_conflict(text):
+        results.append({"rule": "Negation Conflict", "category": "LOGICAL", "r": 1})
+    
+    # Rule 2: Entity Mismatch
+    if context and self._has_entity_mismatch(text, context):
+        results.append({"rule": "Entity Mismatch", "category": "FACTUAL", "r": 1})
+    
+    # Rule 3: Numeric Inconsistency
+    if self._has_numeric_inconsistency(text):
+        results.append({"rule": "Numeric Inconsistency", "category": "NUMERIC", "r": 1})
+    
+    # Rule 4: Label Violation
+    if valid_labels and self._has_label_violation(text, valid_labels):
+        results.append({"rule": "Label Violation", "category": "LABEL", "r": 1})
+    
+    # Rule 5: Unsupported Assertion
+    if context and self._has_unsupported_assertion(text, context):
+        results.append({"rule": "Unsupported Assertion", "category": "GROUNDING", "r": 1})
+    
+    return results
         
         def compute_logic_penalty(self, text: str) -> float:
    
